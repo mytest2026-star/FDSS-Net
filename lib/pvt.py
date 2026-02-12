@@ -39,58 +39,54 @@ class conv2d(nn.Module):
             x = self.relu(x)
         return x
 
-# 通道注意力模块 (Channel Attention Block)
+# Channel Attention Block
 class CAB(nn.Module):
-    def __init__(self, in_planes, ratio=16):  # 初始化 CAB 类，输入通道数和比例（默认为 16）
+    def __init__(self, in_planes, ratio=16):  
         super(CAB, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 定义全局平均池化，输出大小为 1x1
-        self.max_pool = nn.AdaptiveMaxPool2d(1)  # 定义全局最大池化，输出大小为 1x1
+        self.avg_pool = nn.AdaptiveAvgPool2d(1) 
+        self.max_pool = nn.AdaptiveMaxPool2d(1)  
 
-        # 定义通道注意力机制中的两层卷积
-        self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)  # 第一层卷积，减少通道数
-        self.relu1 = nn.ReLU()  # ReLU 激活函数
-        self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)  # 第二层卷积，恢复通道数
-        self.sigmoid = nn.Sigmoid()  # Sigmoid 激活函数，用于输出权重
+        self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)  
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False) 
+        self.sigmoid = nn.Sigmoid() 
 
-    def forward(self, x):  # 定义前向传播方法
-        # 分别使用平均池化和最大池化进行处理
-        avg_out = self.fc2(self.relu1(self.fc1(self.avg_pool(x))))  # 使用平均池化，然后两层卷积
-        max_out = self.fc2(self.relu1(self.fc1(self.max_pool(x))))  # 使用最大池化，然后两层卷积
+    def forward(self, x):  
+        avg_out = self.fc2(self.relu1(self.fc1(self.avg_pool(x)))) 
+        max_out = self.fc2(self.relu1(self.fc1(self.max_pool(x)))) 
 
-        out = avg_out + max_out  # 将两者相加，融合通道信息
-        return self.sigmoid(out)  # 对结果进行 Sigmoid 激活，生成通道注意力
-# 空间注意力模块 (Spatial Attention Block)
+        out = avg_out + max_out  
+        return self.sigmoid(out)  
+# Spatial Attention Block
 class SAB(nn.Module):
-    def __init__(self, kernel_size=7):  # 初始化 SAB 类，默认为 7x7 卷积核
+    def __init__(self, kernel_size=7):  
         super(SAB, self).__init__()
-        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2, bias=False)  # 卷积操作，输入通道为 2，输出通道为 1
-        self.sigmoid = nn.Sigmoid()  # Sigmoid 激活函数
+        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2, bias=False)  
+        self.sigmoid = nn.Sigmoid()  
 
-    def forward(self, x):  # 定义前向传播方法
-        avg_out = torch.mean(x, dim=1, keepdim=True)  # 沿着通道维度求平均值，保持维度
-        max_out, _ = torch.max(x, dim=1, keepdim=True)  # 沿着通道维度求最大值，保持维度
+    def forward(self, x):  
+        avg_out = torch.mean(x, dim=1, keepdim=True)  
+        max_out, _ = torch.max(x, dim=1, keepdim=True)  
 
-        x = torch.cat([avg_out, max_out], dim=1)  # 将平均池化和最大池化的结果拼接起来
-        x = self.conv1(x)  # 通过卷积提取空间特征
-        return self.sigmoid(x)  # 使用 Sigmoid 激活，生成空间注意力
+        x = torch.cat([avg_out, max_out], dim=1) 
+        x = self.conv1(x)  
+        return self.sigmoid(x) 
 
 # ============================
-#   模块一 FEPM: Feature Enhancement and Propagation Module
+#   FEPM: Feature Enhancement and Propagation Module
 # ============================
 class FEPM(nn.Module):
-    def __init__(self, in_channels, ratio=16):  # 初始化 CMEA 类，输入通道数和比例（默认为 16）
+    def __init__(self, in_channels, ratio=16): 
         super().__init__()
-        self.in_channels = in_channels  # 保存输入通道数
-        # 定义深度可分离卷积（DWConv）模块，用于多尺度卷积
+        self.in_channels = in_channels 
+       
         self.dwconvs = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 3, 1, 3 // 2, groups=self.in_channels, bias=False),
-            # 3x3 深度可分离卷积
-            nn.BatchNorm2d(self.in_channels),  # 批量归一化
-            nn.ReLU6(inplace=True))  # ReLU6 激活函数
+            nn.BatchNorm2d(self.in_channels)
+            nn.ReLU6(inplace=True))  
 
-        # 定义 1x1 卷积，用于通道融合
+      
         self.conv1X1 = nn.Conv2d(in_channels, in_channels, kernel_size=1)
-        # 定义不同尺度的深度可分离卷积（3x3, 5x5, 7x7, 9x9）
         self.dwconv3X3 = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 3, 1, 3 // 2, groups=self.in_channels, bias=False),
             nn.BatchNorm2d(self.in_channels),
@@ -108,40 +104,37 @@ class FEPM(nn.Module):
             nn.BatchNorm2d(self.in_channels),
             nn.ReLU6(inplace=True))
 
-        # 定义计算通道注意力的部分
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 自适应平均池化
-        self.max_pool = nn.AdaptiveMaxPool2d(1)  # 自适应最大池化
-        self.fc1 = nn.Conv2d(in_channels, in_channels // ratio, 1, bias=False)  # 第一层卷积，降低通道数
-        self.relu1 = nn.ReLU()  # ReLU 激活
-        self.fc2 = nn.Conv2d(in_channels // ratio, in_channels, 1, bias=False)  # 第二层卷积，恢复通道数
-        self.sigmoid = nn.Sigmoid()  # Sigmoid 激活
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)  
+        self.max_pool = nn.AdaptiveMaxPool2d(1)  
+        self.fc1 = nn.Conv2d(in_channels, in_channels // ratio, 1, bias=False)  
+        self.relu1 = nn.ReLU()  
+        self.fc2 = nn.Conv2d(in_channels // ratio, in_channels, 1, bias=False)  
+        self.sigmoid = nn.Sigmoid()  
 
-        # 定义计算空间注意力的卷积部分
-        self.conv1 = nn.Conv2d(2, 1, 7, padding=7 // 2, bias=False)  # 7x7 卷积，输入 2 个通道，输出 1 个通道
-        self.sigmoid = nn.Sigmoid()  # Sigmoid 激活
+      
+        self.conv1 = nn.Conv2d(2, 1, 7, padding=7 // 2, bias=False)  
+        self.sigmoid = nn.Sigmoid()  
 
-    def forward(self, x):  # 定义前向传播方法
-        # 多尺度卷积
-        x = self.dwconv3X3(x)  # 3x3 卷积
-        x = x + self.dwconv5X5(x) + self.dwconv7X7(x) + self.dwconv9X9(x)  # 加上其他尺度的卷积输出
-        x = self.conv1X1(x)  # 1x1 卷积，调整通道数
+    def forward(self, x):  
+        x = self.dwconv3X3(x)  
+        x = x + self.dwconv5X5(x) + self.dwconv7X7(x) + self.dwconv9X9(x) 
+        x = self.conv1X1(x) 
 
-        # 计算通道注意力
-        avg_out1 = self.fc2(self.relu1(self.fc1(self.avg_pool(x))))  # 平均池化后通过全连接层
-        max_out1 = self.fc2(self.relu1(self.fc1(self.max_pool(x))))  # 最大池化后通过全连接层
-        out1 = avg_out1 + max_out1  # 两者相加，融合信息
-        c_attention = self.sigmoid(out1)  # 使用 Sigmoid 激活函数，得到通道注意力
+        avg_out1 = self.fc2(self.relu1(self.fc1(self.avg_pool(x)))) 
+        max_out1 = self.fc2(self.relu1(self.fc1(self.max_pool(x))))  
+        out1 = avg_out1 + max_out1 
+        c_attention = self.sigmoid(out1)  
 
-        # 计算空间注意力
-        avg_out2 = torch.mean(x, dim=1, keepdim=True)  # 沿着通道维度求平均
-        max_out2, _ = torch.max(x, dim=1, keepdim=True)  # 沿着通道维度求最大值
-        out2 = torch.cat([avg_out2, max_out2], dim=1)  # 拼接平均池化和最大池化的结果
-        out2 = self.conv1(out2)  # 通过卷积获取空间注意力
-        s_attention = self.sigmoid(out2)  # 使用 Sigmoid 激活函数，得到空间注意力
+       
+        avg_out2 = torch.mean(x, dim=1, keepdim=True)  
+        max_out2, _ = torch.max(x, dim=1, keepdim=True) 
+        out2 = torch.cat([avg_out2, max_out2], dim=1)  
+        out2 = self.conv1(out2)  
+        s_attention = self.sigmoid(out2)  
 
-        # 最终输出：通道注意力和空间注意力加权后的特征
-        output = x * c_attention + x * s_attention  # 加权融合
-        return output  # 返回输出
+      
+        output = x * c_attention + x * s_attention
+        return output  
 
 class DWConv(nn.Module):
     def __init__(self, dim):
@@ -222,19 +215,19 @@ class ConvCrossAttention(nn.Module):
 
 
 # ============================
-#   模块二 DFSM：Dual-Flow Semantic Mixing Module
+#  DSSM：Dual-Stream Semantic Mixture 
 # ============================
 class DFSM(nn.Module):
     """
     Q:  (B, Cq, Hq, Wq)
     KV: (B, Ckv, Hkv, Wkv)
 
-    输出总是 (B, Cq, Hq, Wq)
+   (B, Cq, Hq, Wq)
     """
     def __init__(self, q_channels, kv_channels, num_heads=4):
         super().__init__()
 
-        # 将 KV 通道映射到 Q 通道（不管差多少都能对齐）
+      
         self.kv_align = nn.Conv2d(kv_channels, q_channels, 1)
 
         self.norm_q = nn.LayerNorm(q_channels)
@@ -246,11 +239,11 @@ class DFSM(nn.Module):
     def forward(self, q, kv):
         B, Cq, Hq, Wq = q.shape
 
-        # STEP 1: 先 resize KV → Q 的 spatial size
+        # STEP 1: resize KV → Q 
         kv = F.interpolate(kv, size=(Hq, Wq),
                            mode="bilinear", align_corners=False)
 
-        # STEP 2: 对齐 KV 通道 → Cq
+        # STEP 2: KV →Cq
         kv = self.kv_align(kv)
 
         # STEP 3: LayerNorm
@@ -267,24 +260,24 @@ class DFSM(nn.Module):
         return q + att + gclm_out
 
 # ============================
-#   模块三：HMAP：Hierarchical Multi-scale Aggregation and Prediction
+#   HMAP：Hierarchical Multi-scale Aggregation and Prediction
 # ============================
 class HMAP(nn.Module):
     def __init__(self, in_c, out_c):
         super(HMAP, self).__init__()
-        # 统一通道
+     
         self.c3 = conv2d(in_c[0], out_c, kernel_size=1, padding=0)
         self.c2 = conv2d(in_c[1], out_c, kernel_size=1, padding=0)
         self.c1 = conv2d(in_c[2], out_c, kernel_size=1, padding=0)
 
-        # 两条互补分支
+  
         self.branch1_1 = conv2d(out_c * 2, out_c)
         self.branch1_2 = conv2d(out_c, out_c, kernel_size=1, padding=0)
 
         self.branch2_1 = conv2d(out_c * 2, out_c)
         self.branch2_2 = conv2d(out_c, out_c, kernel_size=1, padding=0)
 
-        # 最终融合
+       
         self.fuse1 = conv2d(out_c * 2, out_c)
         self.fuse2 = conv2d(out_c, out_c)
 
@@ -311,34 +304,32 @@ class HMAP(nn.Module):
         self.out5 = nn.Conv2d(64, 1, 1)
 
     def forward(self, x1, x2, x3, x4):
-        # 目标尺寸 = x3（最低层分辨率*2）
+
         target_h = x1.size(2) * 2
         target_w = x1.size(3) * 2
 
-        # ================
-        #   上采样 + conv
-        # ================
+       
         x3_up = self.c3(x3)
         x3_up = F.interpolate(x3_up, size=(target_h, target_w), mode="bilinear", align_corners=True)
 
         x2_up = self.c2(x2)
         x2_up = F.interpolate(x2_up, size=(target_h, target_w), mode="bilinear", align_corners=True)
 
-        # x1 + x2 融合
+       
         x12 = torch.cat([x3_up, x2_up], dim=1)
 
-        # 两条子分支
+
         b1 = self.branch1_2(self.branch1_1(x12))
         b2 = self.branch2_2(self.branch2_1(x12))
 
-        # x3 统一
+      
         x1_up = self.c1(x1)
         x1_up = F.interpolate(x1_up, size=(target_h, target_w), mode="bilinear", align_corners=True)
 
-        # 互补增强
+    
         feat = x1_up * b1 + b2
 
-        # 与原始 x3 的 up 拼接
+       
         out = torch.cat([feat, x1_up], dim=1)
         out = self.fuse2(self.fuse1(out))
         out = F.interpolate(self.out5(out), scale_factor=2, mode='bilinear')
@@ -401,7 +392,7 @@ class OURSNet(nn.Module):
         x3_fepm = self.fepm3(x3)
         x4_Tran = self.Translayer4(x4)
 
-        #dfsm
+        #dssm
         x34_g = self.dfsm34(x3_fepm,x4_Tran)
         x23_g = self.dfsm23(x2_fepm,x34_g)
         x12_g = self.dfsm12(x1_fepm,x23_g)
