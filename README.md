@@ -1,6 +1,4 @@
 # FDSS-Net：Feature Enhancement and Dual-Stream Semantic Mixture Network for Polyp Segmentation
-To quantitatively evaluate the segmentation performance and generalizability of our method, we employ five publicly available polyp segmentation datasets: ColonDB, ETIS-LaribPolypDB, Kvasir, CVC-300, and ClinicDB. 
-The training set is constructed by combining 900 images from Kvasir and 550 images from ClinicDB, resulting in 1,450 labeled samples. All other datasets are exclusively used during testing to assess the model's generalization capability across domains, particularly under varying imaging conditions and distribution shifts.
 
 We proposed FEDM-Net architecture consists of the backbone PVT, Feature  Enhancement and Propagation Module (FEPM), Dual-Stream Semantic Mixture (DSSM) Module, and Hierarchical Multi-Scale Aggregation and Prediction (HMAP) module.
 
